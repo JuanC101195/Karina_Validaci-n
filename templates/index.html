@@ -135,6 +135,12 @@ function tarjetaHoja(nombre, h) {
     </div>`;
 }
 
+function listaAvisos(avisos) {
+  if (!avisos.length) return "";
+  const items = avisos.map(a => "<li>⚠ " + esc(a) + "</li>").join("");
+  return '<ul class="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-md p-2 space-y-0.5">' + items + "</ul>";
+}
+
 function render(data, primera) {
   const dias = data.dias;
   TOKEN = data.token;
@@ -164,7 +170,7 @@ function render(data, primera) {
         <div class="space-y-2">${preguntaAlquiler(d.fecha, "JP", d.hojas.JP)}${tarjetaHoja("JP", d.hojas.JP)}</div>
         <div class="space-y-2">${preguntaAlquiler(d.fecha, "RC", d.hojas.RC)}${tarjetaHoja("RC", d.hojas.RC)}</div>
       </div>
-      ${d.avisos.length ? `<ul class="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-md p-2 space-y-0.5">${d.avisos.map(a => `<li>⚠ ${esc(a)}</li>`).join("")}</ul>` : ""}
+      ${listaAvisos(d.avisos)}
     </div>`).join("");
   Animaciones.resultados(dias, primera);
 }

@@ -36,8 +36,11 @@ def test_agrupar_columnas_india_y_motohoy():
         reg("JP", "ALMACEN DE REPUESTOS", abono=185, multa=35),
         reg("Ricar", "MOTOHOY", abono=225, multa=25, repuesto=10),
     ])
-    assert filas["JP"]["G"] == 185 and filas["JP"]["M"] == 35
-    assert filas["RC"]["H"] == 225 and filas["RC"]["N"] == 25 and filas["RC"]["V"] == 10
+    assert filas['JP']['G'] == 185
+    assert filas['JP']['M'] == 35
+    assert filas['RC']['H'] == 225
+    assert filas['RC']['N'] == 25
+    assert filas['RC']['V'] == 10
 
 
 def test_pronto_va_a_columna_y():
@@ -54,7 +57,8 @@ def test_registro_desconocido_va_a_avisos_no_se_pierde():
 
 def test_transferencia_se_suma_al_recaudo_del_punto():
     filas, avisos = reglas.agrupar_recaudo([reg("JP", "FAVIPAN", abono=10, transf=5)])
-    assert filas["JP"]["C"] == 15 and avisos == []
+    assert filas['JP']['C'] == 15
+    assert avisos == []
 
 
 def caja3(**kw):
@@ -67,34 +71,47 @@ def caja3(**kw):
 def test_caja3_dia_normal_alquiler_va_a_ab():
     # RC 7-oct-2026: alquiler 16280 -> AB
     cols, comite, pendiente = reglas.fila_desde_caja3(caja3(alquiler=16280, traslado=12600, ajustes=25))
-    assert not comite and not pendiente
-    assert cols["AB"] == 16280 and cols["AC"] == 0 and cols["Z"] == 12600 and cols["AA"] == 25
+    assert not comite
+    assert not pendiente
+    assert cols['AB'] == 16280
+    assert cols['AC'] == 0
+    assert cols['Z'] == 12600
+    assert cols['AA'] == 25
 
 
 def test_caja3_dia_comite_sin_respuesta_queda_pendiente():
     # JP 9-oct-2026: alquiler 48840 de Caja 3 = alquiler + inversion en motos
     cols, comite, pendiente = reglas.fila_desde_caja3(caja3(alquiler=48840, gastos=51768, retiro=75852))
-    assert comite and pendiente
-    assert "AB" not in cols and "AC" not in cols
-    assert cols["AD"] == 51768 and cols["AE"] == 75852
+    assert comite
+    assert pendiente
+    assert 'AB' not in cols
+    assert 'AC' not in cols
+    assert cols['AD'] == 51768
+    assert cols['AE'] == 75852
 
 
 def test_caja3_dia_comite_con_alquiler_total_separa_la_inversion():
     # RC 21-ago-2026: Caja 3 110540 = alquiler 28580 + inversion 81960
     cols, comite, pendiente = reglas.fila_desde_caja3(caja3(alquiler=110540, gastos=1, retiro=1), 28580)
-    assert comite and not pendiente
-    assert cols["AB"] == 28580 and cols["AC"] == 81960
+    assert comite
+    assert not pendiente
+    assert cols['AB'] == 28580
+    assert cols['AC'] == 81960
 
 
 def test_caja3_dia_comite_sin_alquiler_no_pregunta():
     cols, comite, pendiente = reglas.fila_desde_caja3(caja3(gastos=100, retiro=50))
-    assert comite and not pendiente and cols["AB"] == 0 and cols["AC"] == 0
+    assert comite
+    assert not pendiente
+    assert cols['AB'] == 0
+    assert cols['AC'] == 0
 
 
 def test_comparar_detecta_saldo_caja3_mal_digitado():
     # JP 10-oct-2026: el rojo de 1.001
     difs = reglas.comparar({"AJ": 6764386.47}, {"AJ": 6765387.47})
-    assert len(difs) == 1 and difs[0]["diferencia"] == 1001.0
+    assert len(difs) == 1
+    assert difs[0]['diferencia'] == 1001.0
 
 
 def test_comparar_celda_vacia_con_esperado_cero_no_es_diferencia():
@@ -136,7 +153,8 @@ def test_formula_correcta_no_avisa():
 
 def test_formula_que_deja_fuera_india_mh_avisa():
     avisos = reglas.revisar_formula_acumulado("O", "=SUM(I481:L481,P481)+O480", 481)
-    assert len(avisos) == 1 and "distinta" in avisos[0]
+    assert len(avisos) == 1
+    assert 'distinta' in avisos[0]
 
 
 def test_numero_escrito_a_mano_en_formula_avisa():
@@ -152,13 +170,15 @@ def test_valor_fijo_en_lugar_de_formula_avisa():
 def test_formula_de_reinicio_sugiere_sin_acumulado_anterior():
     # JP O479 (sabado 10-oct, reinicio): =SUM(I479:L479,P479)
     avisos = reglas.revisar_formula_acumulado("O", "=SUM(I479:L479,P479)", 479)
-    assert avisos and avisos[0].endswith("=SUM(I479:N479,P479)")
+    assert avisos
+    assert avisos[0].endswith('=SUM(I479:N479,P479)')
 
 
 def test_ajustes_multas_van_a_p_y_cuotas_a_aa():
     # JP 3-oct-2026: Caja 3 E=-25 (cuotas) F=25 (multas)
     cols, _, _ = reglas.fila_desde_caja3(caja3(ajustes=-25, ajustes_multas=25))
-    assert cols["AA"] == -25 and cols["P"] == 25
+    assert cols['AA'] == -25
+    assert cols['P'] == 25
 
 
 def test_acumulado_usa_p_de_caja3_si_existe():
