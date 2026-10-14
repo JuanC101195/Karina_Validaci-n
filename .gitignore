@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Archivos de datos reales (informacion financiera): nunca se versionan.
+*.xlsx
+*.xlsm
+*.xlsb
+*.csv
+
+# Credenciales locales de OpenCorp -- ver opencorp_creds.json.example
+opencorp_creds.json
+downloads/
