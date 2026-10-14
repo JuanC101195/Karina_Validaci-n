@@ -8,6 +8,10 @@
  * y respeta "reducir movimiento" de Windows.
  */
 (function () {
+  // Azar para posiciones de particulas. No es seguridad, pero se usa
+  // crypto.getRandomValues para no depender de Math.random (SonarCloud S2245).
+  const _buf = new Uint32Array(1);
+  const azar = () => crypto.getRandomValues(_buf)[0] / 4294967296;
   const canvas = document.getElementById("intro-canvas");
   const contenido = document.getElementById("login-contenido");
   const saludo = document.getElementById("saludo");
@@ -66,16 +70,16 @@
   const escala = Math.min(1.5, ancho / 640);
   const cx = ancho / 2, cy = alto * 0.42;
   const particulas = objetivo.map(p => ({
-    x: Math.random() * ancho,
-    y: Math.random() * alto,
+    x: azar() * ancho,
+    y: azar() * alto,
     tx: cx + p.x * escala,
     ty: cy + p.y * escala,
     alfa: 0,
-    tam: TAMANOS[(Math.random() * TAMANOS.length) | 0],
-    rot: (Math.random() - 0.5) * 2,
-    glifo: GLIFOS[(Math.random() * GLIFOS.length) | 0],
-    color: COLORES[(Math.random() * COLORES.length) | 0],
-    deriva: { x: (Math.random() - 0.5) * 0.25, y: (Math.random() - 0.5) * 0.25 },
+    tam: TAMANOS[(azar() * TAMANOS.length) | 0],
+    rot: (azar() - 0.5) * 2,
+    glifo: GLIFOS[(azar() * GLIFOS.length) | 0],
+    color: COLORES[(azar() * COLORES.length) | 0],
+    deriva: { x: (azar() - 0.5) * 0.25, y: (azar() - 0.5) * 0.25 },
   }));
 
   let flotando = false;
@@ -112,13 +116,13 @@
   function estadoFinal() {
     // Fondo tenue de cifras flotando + formulario visible.
     flotando = true;
-    particulas.forEach(p => { p.alfa = 0.12; p.rot = (Math.random() - 0.5) * 2; });
+    particulas.forEach(p => { p.alfa = 0.12; p.rot = (azar() - 0.5) * 2; });
     gsap.set(contenido, { opacity: 1, y: 0 });
     gsap.set(letras, { opacity: 1, yPercent: 0 });
   }
 
   if (reducido || yaVista) {
-    particulas.forEach(p => { p.x = Math.random() * ancho; p.y = Math.random() * alto; });
+    particulas.forEach(p => { p.x = azar() * ancho; p.y = azar() * alto; });
     estadoFinal();
     return;
   }
@@ -138,9 +142,9 @@
   }, "-=0.2");
   // 3. Pausa con el logo armado, luego se abren hacia afuera y quedan de fondo
   tl.to(particulas, {
-    x: i => particulas[i].tx + (particulas[i].tx - cx) * (1.5 + Math.random() * 2) + (Math.random() - 0.5) * 200,
-    y: i => particulas[i].ty + (particulas[i].ty - cy) * (1.5 + Math.random() * 2) + (Math.random() - 0.5) * 200,
-    alfa: 0.12, rot: () => (Math.random() - 0.5) * 2,
+    x: i => particulas[i].tx + (particulas[i].tx - cx) * (1.5 + azar() * 2) + (azar() - 0.5) * 200,
+    y: i => particulas[i].ty + (particulas[i].ty - cy) * (1.5 + azar() * 2) + (azar() - 0.5) * 200,
+    alfa: 0.12, rot: () => (azar() - 0.5) * 2,
     duration: 1.2, ease: "power3.out", stagger: { amount: 0.2, from: "center" },
     onComplete: () => { flotando = true; },
   }, "+=0.5");

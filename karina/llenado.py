@@ -27,6 +27,12 @@ from . import excel_io, reglas
 
 NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 NS_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+NS_PKG_REL = "http://schemas.openxmlformats.org/package/2006/relationships"
+NS_TIPOS = "http://schemas.openxmlformats.org/package/2006/content-types"
+RUTA_WORKBOOK = "xl/workbook.xml"
+RUTA_WORKBOOK_RELS = "xl/_rels/workbook.xml.rels"
+RUTA_TIPOS = "[Content_Types].xml"
+RUTA_CALCCHAIN = "xl/calcChain.xml"
 COLUMNAS_FORMULA_COPIADAS = ("X", "AF", "AH", "AI", "AK", "AL")
 
 
@@ -39,8 +45,8 @@ def _col_de(ref):
 
 
 def _rutas_hojas(z):
-    wb = etree.fromstring(z.read("xl/workbook.xml"))
-    rels = etree.fromstring(z.read("xl/_rels/workbook.xml.rels"))
+    wb = etree.fromstring(z.read(RUTA_WORKBOOK))
+    rels = etree.fromstring(z.read(RUTA_WORKBOOK_RELS))
     destino = {r.get("Id"): r.get("Target") for r in rels}
     rutas = {}
     for sh in wb.iter(_q("sheet")):
@@ -110,7 +116,7 @@ def _escribir(hoja, r, col, tipo, valor, estilo_de=None):
     f = c.find(_q("f"))
     if f is not None and f.get("t") == "shared" and f.get("ref") and f.get("ref") != f"{col}{r}":
         return False
-    for hijo in list(c):
+    for hijo in c.getchildren():
         c.remove(hijo)
     c.attrib.pop("t", None)
     if estilo_de is not None:
@@ -128,51 +134,97 @@ def _normalizar(formula):
     return (formula or "").upper().replace(" ", "").replace("$", "").lstrip("=")
 
 
+def _formula_previa(escritos, wb_formulas, hoja, r, col):
+    """Formula (con '=') de la celda de la fila anterior: la que se acaba de
+    escribir en este mismo llenado, o la que ya tenia CONTABILIDAD."""
+    previa = escritos.get((hoja, r - 1), {}).get(col)
+    if previa is not None:
+        return "=" + previa[1] if previa[0] == "f" else None
+    v = wb_formulas[hoja][f"{col}{r - 1}"].value
+    return v if isinstance(v, str) and v.startswith("=") else None
+
+
+def _celdas_fila_nueva(h, hoja, wb_formulas, wb_valores, escritos, fecha):
+    r = h["fila"]
+    celdas = {col: ("v", v) for col, v in h["esperado"].items() if col not in reglas.ACUMULADOS}
+    ant = escritos.get((hoja, r - 1), {}).get("_fecha") or excel_io.fecha_de_fila(wb_valores, hoja, r - 1)
+    dias = (fecha - ant).days if ant else 1
+    celdas["A"] = ("f", f"A{r - 1}+{dias}")
+    for col in COLUMNAS_FORMULA_COPIADAS:
+        previa = _formula_previa(escritos, wb_formulas, hoja, r, col)
+        if previa:
+            celdas[col] = ("f", Translator(previa, origin=f"{col}{r - 1}").translate_formula(f"{col}{r}")[1:])
+    return celdas
+
+
+def _celdas_acumulados(h, hoja, wb_formulas):
+    """Formulas de O/W que hay que escribir (solo si no son ya las correctas)."""
+    celdas = {}
+    if h.get("reinicio") is None:
+        return celdas
+    r = h["fila"]
+    for col in reglas.ACUMULADOS:
+        correcta = reglas.formula_acumulado(col, r, h["reinicio"])
+        actual = None if h["nueva"] else wb_formulas[hoja][f"{col}{r}"].value
+        if _normalizar(actual) != _normalizar(correcta):
+            celdas[col] = ("f", correcta)
+    return celdas
+
+
 def _celdas_a_escribir(h, hoja, wb_formulas, wb_valores, escritos, fecha):
     """{col: (tipo, valor)} para una fila de un dia."""
-    r = h["fila"]
-    celdas = {}
     if h["nueva"]:
-        for col, v in h["esperado"].items():
-            if col not in reglas.ACUMULADOS:
-                celdas[col] = ("v", v)
-        ant = escritos.get((hoja, r - 1), {}).get("_fecha") or excel_io.fecha_de_fila(wb_valores, hoja, r - 1)
-        dias = (fecha - ant).days if ant else 1
-        celdas["A"] = ("f", f"A{r - 1}+{dias}")
-        for col in COLUMNAS_FORMULA_COPIADAS:
-            previa = escritos.get((hoja, r - 1), {}).get(col)
-            if previa is None:
-                v = wb_formulas[hoja][f"{col}{r - 1}"].value
-                previa = v if isinstance(v, str) and v.startswith("=") else None
-            else:
-                previa = "=" + previa[1]
-            if previa:
-                celdas[col] = ("f", Translator(previa, origin=f"{col}{r - 1}").translate_formula(f"{col}{r}")[1:])
+        celdas = _celdas_fila_nueva(h, hoja, wb_formulas, wb_valores, escritos, fecha)
     else:
-        for d in h["diferencias"]:
-            if d["columna"] not in reglas.ACUMULADOS:
-                celdas[d["columna"]] = ("v", d["esperado"])
-    if h.get("reinicio") is not None:
-        for col in reglas.ACUMULADOS:
-            correcta = reglas.formula_acumulado(col, r, h["reinicio"])
-            actual = None if h["nueva"] else wb_formulas[hoja][f"{col}{r}"].value
-            if _normalizar(actual) != _normalizar(correcta):
-                celdas[col] = ("f", correcta)
+        celdas = {d["columna"]: ("v", d["esperado"]) for d in h["diferencias"]
+                  if d["columna"] not in reglas.ACUMULADOS}
+    celdas.update(_celdas_acumulados(h, hoja, wb_formulas))
     return celdas
 
 
 def _marcar_recalculo(z, contenido):
-    """fullCalcOnLoad en workbook.xml y fuera calcChain (Excel lo rehace)."""
-    wb = contenido.get("xl/workbook.xml", z.read("xl/workbook.xml")).decode("utf-8")
-    if "<calcPr" in wb:
-        wb = re.sub(r"<calcPr([^>]*?)\s*/>", lambda m: "<calcPr" + re.sub(r'\s*fullCalcOnLoad="[^"]*"', "", m.group(1)) + ' fullCalcOnLoad="1"/>', wb, count=1)
-    else:
-        wb = wb.replace("</workbook>", '<calcPr fullCalcOnLoad="1"/></workbook>')
-    contenido["xl/workbook.xml"] = wb.encode("utf-8")
-    rels = z.read("xl/_rels/workbook.xml.rels").decode("utf-8")
-    contenido["xl/_rels/workbook.xml.rels"] = re.sub(r'<Relationship [^>]*Target="[^"]*calcChain\.xml"[^>]*/>', "", rels).encode("utf-8")
-    tipos = z.read("[Content_Types].xml").decode("utf-8")
-    contenido["[Content_Types].xml"] = re.sub(r'<Override [^>]*PartName="/xl/calcChain\.xml"[^>]*/>', "", tipos).encode("utf-8")
+    """fullCalcOnLoad en workbook.xml y fuera calcChain (Excel lo rehace).
+    Se edita con lxml, no con expresiones regulares."""
+    wb = etree.fromstring(z.read(RUTA_WORKBOOK))
+    calc = wb.find(_q("calcPr"))
+    if calc is None:
+        calc = etree.SubElement(wb, _q("calcPr"))
+    calc.set("fullCalcOnLoad", "1")
+    contenido[RUTA_WORKBOOK] = etree.tostring(wb, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+    rels = etree.fromstring(z.read(RUTA_WORKBOOK_RELS))
+    for rel in rels.findall(f"{{{NS_PKG_REL}}}Relationship"):
+        if rel.get("Target", "").endswith("calcChain.xml"):
+            rels.remove(rel)
+    contenido[RUTA_WORKBOOK_RELS] = etree.tostring(rels, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+    tipos = etree.fromstring(z.read(RUTA_TIPOS))
+    for ov in tipos.findall(f"{{{NS_TIPOS}}}Override"):
+        if ov.get("PartName") == "/" + RUTA_CALCCHAIN:
+            tipos.remove(ov)
+    contenido[RUTA_TIPOS] = etree.tostring(tipos, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def _llenar_dia(dia, hojas, wb_formulas, wb_valores, escritos):
+    """Escribe un dia en las hojas; devuelve la lista de cambios."""
+    fecha = dt.date.fromisoformat(dia["fecha"]) if isinstance(dia["fecha"], str) else dia["fecha"]
+    cambios = []
+    for hoja in reglas.HOJAS:
+        h = dia["hojas"][hoja]
+        if not h["fila"]:
+            continue
+        celdas = _celdas_a_escribir(h, hoja, wb_formulas, wb_valores, escritos, fecha)
+        estilo = h["fila"] - 1 if h["nueva"] else None
+        omitidas = [col for col, (tipo, valor) in celdas.items()
+                    if not _escribir(hojas[hoja], h["fila"], col, tipo, valor, estilo_de=estilo)]
+        escritos[(hoja, h["fila"])] = dict(celdas, _fecha=fecha)
+        if celdas:
+            cambios.append({
+                "fecha": fecha.isoformat(), "hoja": hoja, "fila": h["fila"], "nueva": h["nueva"],
+                "celdas": sorted(set(celdas) - set(omitidas), key=column_index_from_string),
+                "omitidas": omitidas,
+            })
+    return cambios
 
 
 def llenar(xlsx_bytes, dias, wb_formulas, wb_valores):
@@ -182,23 +234,7 @@ def llenar(xlsx_bytes, dias, wb_formulas, wb_valores):
     hojas = {h: _Hoja(etree.fromstring(z.read(rutas[h]))) for h in reglas.HOJAS}
     escritos, cambios = {}, []
     for dia in dias:
-        fecha = dt.date.fromisoformat(dia["fecha"]) if isinstance(dia["fecha"], str) else dia["fecha"]
-        for hoja in reglas.HOJAS:
-            h = dia["hojas"][hoja]
-            if not h["fila"]:
-                continue
-            celdas = _celdas_a_escribir(h, hoja, wb_formulas, wb_valores, escritos, fecha)
-            omitidas = []
-            for col, (tipo, valor) in celdas.items():
-                if not _escribir(hojas[hoja], h["fila"], col, tipo, valor, estilo_de=h["fila"] - 1 if h["nueva"] else None):
-                    omitidas.append(col)
-            escritos[(hoja, h["fila"])] = dict(celdas, _fecha=fecha)
-            if celdas or omitidas:
-                cambios.append({
-                    "fecha": fecha.isoformat(), "hoja": hoja, "fila": h["fila"], "nueva": h["nueva"],
-                    "celdas": sorted(set(celdas) - set(omitidas), key=column_index_from_string),
-                    "omitidas": omitidas,
-                })
+        cambios.extend(_llenar_dia(dia, hojas, wb_formulas, wb_valores, escritos))
     contenido = {
         rutas[h]: etree.tostring(hojas[h].raiz, xml_declaration=True, encoding="UTF-8", standalone=True)
         for h in reglas.HOJAS
@@ -207,7 +243,7 @@ def llenar(xlsx_bytes, dias, wb_formulas, wb_valores):
     salida = io.BytesIO()
     with zipfile.ZipFile(salida, "w") as out:
         for info in z.infolist():
-            if info.filename == "xl/calcChain.xml":
+            if info.filename == RUTA_CALCCHAIN:
                 continue
             datos = contenido.get(info.filename, z.read(info.filename))
             out.writestr(info, datos, compress_type=zipfile.ZIP_DEFLATED)

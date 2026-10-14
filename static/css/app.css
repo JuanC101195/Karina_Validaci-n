@@ -105,7 +105,7 @@ a[role="button"]:focus-visible {
 
 /* ---- Animaciones (feat/animaciones) ---------------------------------- */
 .paso { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 6px; font-weight: 600; position: relative; overflow: hidden; }
-.paso-espera { color: #94a3b8; }
+.paso-espera { color: #64748b; }
 .paso-hecho { color: #047857; background: #ecfdf5; }
 .paso-listo { color: #fff; background: #059669; }
 .paso-activo { color: #3730a3; background: #eef2ff; }

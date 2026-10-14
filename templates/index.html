@@ -145,7 +145,12 @@ function render(data, primera) {
   const celdas = (data.cambios || []).reduce((s, c) => s + c.celdas.length, 0);
   const nuevas = (data.cambios || []).filter(c => c.nueva).length;
   const cam = document.getElementById("cambios");
-  cam.textContent = celdas ? `Se escriben ${celdas} celdas${nuevas ? ` (${nuevas} fila(s) nueva(s))` : ""} en JP/RC` : "No hay nada que corregir";
+  let texto = "No hay nada que corregir";
+  if (celdas) {
+    const detalle = nuevas ? " (" + nuevas + " fila(s) nueva(s))" : "";
+    texto = "Se escriben " + celdas + " celdas" + detalle + " en JP/RC";
+  }
+  cam.textContent = texto;
   cam.classList.remove("hidden");
   const hayPreguntas = dias.some(d => d.hojas.JP.pregunta_alquiler || d.hojas.RC.pregunta_alquiler);
   document.getElementById("aplicar").classList.toggle("hidden", !hayPreguntas);
