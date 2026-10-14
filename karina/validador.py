@@ -61,38 +61,13 @@ def validar_fecha(fecha, registros, wb_caja3, wb_contabilidad, wb_contabilidad_f
     previo = previo or {}
     for hoja in reglas.HOJAS:
         esperado = dict(recaudo[hoja])
-        es_comite = False
-        pregunta = None
-        caja3 = excel_io.leer_caja3(wb_caja3, hoja, fecha, avisos) if wb_caja3 else None
-        if caja3 is not None:
-            respuesta = alquiler_comite.get(hoja)
-            cols_caja3, es_comite, pendiente = reglas.fila_desde_caja3(caja3, respuesta)
-            esperado.update(cols_caja3)
-            if es_comite and caja3["alquiler"]:
-                pregunta = {"total": caja3["alquiler"], "respuesta": respuesta, "pendiente": pendiente}
-                if respuesta is not None and not 0 <= respuesta <= caja3["alquiler"]:
-                    avisos.append(f"{hoja}: el alquiler digitado ({respuesta:,.2f}) no esta entre 0 y el total de Caja 3 ({caja3['alquiler']:,.2f})")
-            aviso = reglas.pronto_caja3_vs_sistema(caja3["pronto"], esperado[reglas.COL_PRONTO])
-            if aviso:
-                avisos.append(f"{hoja}: {aviso}")
-
+        es_comite, pregunta = _aplicar_caja3(wb_caja3, hoja, fecha, esperado, alquiler_comite.get(hoja), avisos)
         ant = previo.get(hoja) or {}
         fila, nueva = _ubicar_fila(wb_contabilidad, hoja, fecha, ant, avisos)
         reinicio = None
         if fila and wb_contabilidad_formulas is not None:
             reinicio = _reinicia_acumulado(wb_contabilidad, wb_caja3, hoja, fila, ant)
-            acum = excel_io.leer_acumulados(wb_contabilidad, wb_contabilidad_formulas, hoja, fila, avisos)
-            for col in reglas.ACUMULADOS:
-                info = acum[col]
-                # El acumulado de ayer: si ayer tambien se esta llenando en este
-                # rango, el valor correcto calculado; si no, el de CONTABILIDAD.
-                if ant.get("fila") == fila - 1 and col in ant.get("esperado", {}):
-                    anterior = ant["esperado"][col]
-                else:
-                    anterior = info["anterior"]
-                esperado[col] = reglas.acumulado_esperado(col, esperado, acum["P"], anterior, reinicio)
-                if not nueva:
-                    avisos.extend(f"{hoja}: {a}" for a in reglas.revisar_formula_acumulado(col, info["formula"], fila, reinicio))
+            _aplicar_acumulados(wb_contabilidad, wb_contabilidad_formulas, hoja, fila, nueva, reinicio, ant, esperado, avisos)
         actual = excel_io.leer_fila_contabilidad(wb_contabilidad, hoja, fila, esperado.keys(), avisos) if fila else {}
         resultado["hojas"][hoja] = {
             "fila": fila,
@@ -104,6 +79,38 @@ def validar_fecha(fecha, registros, wb_caja3, wb_contabilidad, wb_contabilidad_f
             "diferencias": [] if nueva or not fila else reglas.comparar(esperado, actual),
         }
     return resultado
+
+
+def _aplicar_caja3(wb_caja3, hoja, fecha, esperado, respuesta, avisos):
+    """Agrega a `esperado` las columnas de Caja 3. Devuelve (es_comite, pregunta)."""
+    caja3 = excel_io.leer_caja3(wb_caja3, hoja, fecha, avisos) if wb_caja3 else None
+    if caja3 is None:
+        return False, None
+    cols_caja3, es_comite, pendiente = reglas.fila_desde_caja3(caja3, respuesta)
+    esperado.update(cols_caja3)
+    pregunta = None
+    if es_comite and caja3["alquiler"]:
+        pregunta = {"total": caja3["alquiler"], "respuesta": respuesta, "pendiente": pendiente}
+        if respuesta is not None and not 0 <= respuesta <= caja3["alquiler"]:
+            avisos.append(f"{hoja}: el alquiler digitado ({respuesta:,.2f}) no esta entre 0 y el total de Caja 3 ({caja3['alquiler']:,.2f})")
+    aviso = reglas.pronto_caja3_vs_sistema(caja3["pronto"], esperado[reglas.COL_PRONTO])
+    if aviso:
+        avisos.append(f"{hoja}: {aviso}")
+    return es_comite, pregunta
+
+
+def _aplicar_acumulados(wb_contab, wb_formulas, hoja, fila, nueva, reinicio, ant, esperado, avisos):
+    """Calcula O/W esperados. El acumulado de ayer: si ayer tambien se esta
+    llenando en este rango, el valor correcto calculado; si no, el de
+    CONTABILIDAD."""
+    acum = excel_io.leer_acumulados(wb_contab, wb_formulas, hoja, fila, avisos)
+    encadena = ant.get("fila") == fila - 1
+    for col in reglas.ACUMULADOS:
+        info = acum[col]
+        anterior = ant["esperado"][col] if encadena and col in ant.get("esperado", {}) else info["anterior"]
+        esperado[col] = reglas.acumulado_esperado(col, esperado, acum["P"], anterior, reinicio)
+        if not nueva:
+            avisos.extend(f"{hoja}: {a}" for a in reglas.revisar_formula_acumulado(col, info["formula"], fila, reinicio))
 
 
 def _ubicar_fila(wb, hoja, fecha, ant, avisos):

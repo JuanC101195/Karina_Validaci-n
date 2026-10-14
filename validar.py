@@ -7,12 +7,36 @@ CLI de Validaciones Karina.
 import argparse
 import datetime as dt
 import sys
+from pathlib import Path
 
 from karina import excel_io, llenado, reglas, reporte, validador
 
 
 def _fecha(texto):
     return dt.date.fromisoformat(texto)
+
+
+def _ruta(texto, extensiones, debe_existir):
+    """Ruta de un Excel dada por linea de comandos, validada: se resuelve
+    (sin '..' ni enlaces), debe tener la extension esperada y quedar dentro
+    de la carpeta del usuario. Evita leer o escribir archivos fuera de lugar
+    (SonarCloud pythonsecurity:S8707, 2026-10-14)."""
+    ruta = Path(texto).expanduser().resolve()
+    if ruta.suffix.lower() not in extensiones:
+        raise argparse.ArgumentTypeError(f"{texto}: se esperaba {' o '.join(extensiones)}")
+    if not ruta.is_relative_to(Path.home().resolve()):
+        raise argparse.ArgumentTypeError(f"{texto}: debe estar dentro de {Path.home()}")
+    if debe_existir and not ruta.is_file():
+        raise argparse.ArgumentTypeError(f"{texto}: no existe")
+    return ruta
+
+
+def _entrada(*ext):
+    return lambda t: _ruta(t, ext, True)
+
+
+def _salida(*ext):
+    return lambda t: _ruta(t, ext, False)
 
 
 def _fmt(v):
@@ -41,13 +65,13 @@ def imprimir(res):
 
 def main(argv=None):
     p = argparse.ArgumentParser(description="Valida las pestañas JP y RC de CONTABILIDAD contra OpenCorp y Caja 3")
-    p.add_argument("--caja3", required=True, help="CAJA 3.xlsm (Diskstation)")
-    p.add_argument("--contabilidad", required=True, help="CONTABILIDAD.xlsx descargado del Drive")
+    p.add_argument("--caja3", required=True, type=_entrada(".xlsm", ".xlsx"), help="CAJA 3.xlsm (Diskstation)")
+    p.add_argument("--contabilidad", required=True, type=_entrada(".xlsx"), help="CONTABILIDAD.xlsx descargado del Drive")
     p.add_argument("--fecha", type=_fecha)
     p.add_argument("--desde", type=_fecha)
     p.add_argument("--hasta", type=_fecha)
-    p.add_argument("--out", help="ruta del Excel de salida con las pestañas JP y RC")
-    p.add_argument("--out-contabilidad", help="ruta del CONTABILIDAD lleno (copia del subido con JP/RC escritos)")
+    p.add_argument("--out", type=_salida(".xlsx"), help="ruta del Excel de salida con las pestañas JP y RC")
+    p.add_argument("--out-contabilidad", type=_salida(".xlsx"), help="ruta del CONTABILIDAD lleno (copia del subido con JP/RC escritos)")
     p.add_argument("--alquiler-comite", action="append", default=[], metavar="AAAA-MM-DD:HOJA=VALOR",
                    help="alquiler total del dia de comite (la diferencia con Caja 3 es la inversion en motos); repetible")
     args = p.parse_args(argv)
@@ -80,17 +104,16 @@ def main(argv=None):
     for res in dias:
         imprimir(res)
     if args.out_contabilidad:
-        with open(args.contabilidad, "rb") as fh:
-            datos, cambios = llenado.llenar(fh.read(), dias, wb_contab_f, wb_contab)
-        with open(args.out_contabilidad, "wb") as fh:
-            fh.write(datos)
+        if args.out_contabilidad == args.contabilidad:
+            p.error("--out-contabilidad no puede ser el mismo archivo de --contabilidad")
+        datos, cambios = llenado.llenar(args.contabilidad.read_bytes(), dias, wb_contab_f, wb_contab)
+        args.out_contabilidad.write_bytes(datos)
         for c in cambios:
             print(f"  {c['fecha']} {c['hoja']} fila {c['fila']}{' (nueva)' if c['nueva'] else ''}: {len(c['celdas'])} celdas -> {', '.join(c['celdas'])}")
         print(f"\nCONTABILIDAD lleno: {args.out_contabilidad}")
     if args.out:
         encabezados = excel_io.leer_encabezados(wb_contab, ("JP", "RC"))
-        with open(args.out, "wb") as fh:
-            fh.write(reporte.generar_excel(dias, encabezados))
+        args.out.write_bytes(reporte.generar_excel(dias, encabezados))
         print(f"\nExcel generado: {args.out}")
     return 0
 

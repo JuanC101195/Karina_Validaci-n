@@ -10,6 +10,10 @@
  *  - comite: la pregunta del alquiler entra con revelado de mascara.
  */
 window.Animaciones = (function () {
+  // Azar para posiciones de particulas. No es seguridad, pero se usa
+  // crypto.getRandomValues para no depender de Math.random (SonarCloud S2245).
+  const _buf = new Uint32Array(1);
+  const azar = () => crypto.getRandomValues(_buf)[0] / 4294967296;
   const hayGsap = typeof gsap !== "undefined";
   const reducido = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const animar = hayGsap && !reducido;
@@ -92,10 +96,10 @@ window.Animaciones = (function () {
       p.style.background = colores[i % colores.length];
       p.style.left = cx + "px"; p.style.top = cy + "px";
       document.body.appendChild(p);
-      const ang = Math.random() * Math.PI * 2, dist = 40 + Math.random() * 70;
+      const ang = azar() * Math.PI * 2, dist = 40 + azar() * 70;
       gsap.to(p, {
-        x: Math.cos(ang) * dist, y: Math.sin(ang) * dist - 20, rotation: Math.random() * 360,
-        opacity: 0, scale: 0.4 + Math.random() * 0.6, duration: 0.9 + Math.random() * 0.4, ease: "power2.out",
+        x: Math.cos(ang) * dist, y: Math.sin(ang) * dist - 20, rotation: azar() * 360,
+        opacity: 0, scale: 0.4 + azar() * 0.6, duration: 0.9 + azar() * 0.4, ease: "power2.out",
         onComplete: () => p.remove(),
       });
     }

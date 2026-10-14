@@ -65,7 +65,9 @@ def test_fila_nueva_se_crea_con_fecha_valores_y_formulas_corridas():
     d13 = _dia(dt.date(2026, 10, 13), 7, True, {"C": 4645.0, "M": 35.0, "Z": 69280.0, "O": 0.0, "W": 0.0})
     salida, cambios = llenado.llenar(datos, [d12, d13], wf, wv)
     ws = _abrir(salida)["JP"]
-    assert ws["C7"].value == 4645 and ws["M7"].value == 35 and ws["Z7"].value == 69280
+    assert ws["C7"].value == 4645
+    assert ws["M7"].value == 35
+    assert ws["Z7"].value == 69280
     assert ws["O7"].value == "=SUM(I7:N7,P7)+O6"
     assert ws["W7"].value == "=SUM(Q7:V7)+W6"
     assert ws["X7"].value == "=C7+D7+E7+H7+F7+G7"

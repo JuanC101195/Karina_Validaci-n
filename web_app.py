@@ -220,7 +220,7 @@ def api_alquiler_comite(token):
     return jsonify(_validar_guardado(token, respuestas))
 
 
-@app.route("/descargar-contabilidad/<token>")
+@app.route("/descargar-contabilidad/<token>", methods=["GET"])
 def descargar_contabilidad(token):
     if token not in VALIDACIONES or session.get("reporte") != token:
         abort(404)
@@ -230,7 +230,7 @@ def descargar_contabilidad(token):
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
-@app.route("/descargar/<token>")
+@app.route("/descargar/<token>", methods=["GET"])
 def descargar(token):
     if token not in VALIDACIONES or session.get("reporte") != token:
         abort(404)
