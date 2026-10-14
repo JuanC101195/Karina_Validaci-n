@@ -29,6 +29,7 @@ VERDE = PatternFill("solid", fgColor="E2EFDA")
 GRIS = PatternFill("solid", fgColor="EDEDED")
 ENCABEZADO = PatternFill("solid", fgColor="1F3864")
 AMARILLO = PatternFill("solid", fgColor="FFF2CC")
+AZUL = PatternFill("solid", fgColor="DDEBF7")  # fila nueva: el programa la llena
 BORDE = Border(*(Side(style="thin", color="BFBFBF"),) * 4)
 FORMATO_NUM = "#,##0.0;-#,##0.0;0.0"
 
@@ -79,8 +80,11 @@ def generar_excel(dias, encabezados=None):
                 cf.fill = AMARILLO
                 cf.comment = Comment("CONTABILIDAD no tiene fila para esta fecha", "Validaciones")
                 continue
+            if h.get("nueva"):
+                cf.fill = AZUL
+                avisos = ["Fila nueva: no estaba en CONTABILIDAD, el programa la llena"] + avisos
             if avisos:
-                cf.fill = AMARILLO
+                cf.fill = AMARILLO if not h.get("nueva") else AZUL
                 cf.comment = Comment("\n".join(avisos)[:2000], "Validaciones")
             difs = {d["columna"]: d for d in h["diferencias"]}
             pregunta = h.get("pregunta_alquiler")
@@ -108,6 +112,8 @@ def generar_excel(dias, encabezados=None):
                         f"En CONTABILIDAD ({col}{h['fila']}): {excel}\nDiferencia: {d['diferencia']:+,.2f}",
                         "Validaciones",
                     )
+                elif h.get("nueva"):
+                    celda.fill = AZUL
                 else:
                     celda.fill = VERDE
                 if col in COLUMNAS_SOLO_VALIDAR:

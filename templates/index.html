@@ -62,6 +62,11 @@
   <a id="descarga" href="#" class="hidden inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold">
     <span class="material-symbols-outlined text-[16px]">download</span> Descargar Excel JP / RC
   </a>
+  <a id="descarga-contab" href="#" class="hidden inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-sky-700 hover:bg-sky-800 text-white text-xs font-semibold"
+     title="Copia del CONTABILIDAD que subiste, con JP y RC llenos y corregidos. Solo se tocan esas dos pestañas.">
+    <span class="material-symbols-outlined text-[16px]">edit_document</span> Descargar CONTABILIDAD llena
+  </a>
+  <span id="cambios" class="hidden self-center text-[11px] text-slate-500"></span>
   </div>
   <div id="resultados" class="space-y-4"></div>
 </div>
@@ -102,6 +107,10 @@ function tarjetaHoja(nombre, h) {
   const pend = h.pregunta_alquiler && h.pregunta_alquiler.pendiente
     ? `<span class="ml-2 text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">AB/AC pendientes</span>` : "";
   const comite = (h.comite ? `<span class="ml-2 text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded">comité</span>` : "") + pend;
+  if (h.nueva) {
+    const n = Object.keys(h.esperado).length;
+    return `<div class="tarjeta-nueva border border-sky-200 bg-sky-50 rounded-md p-3 text-xs font-semibold text-sky-800">${nombre} (fila ${h.fila})${comite}: fila nueva — se llenan ${n} celdas + fórmulas</div>`;
+  }
   if (!h.diferencias.length) {
     return `<div class="tarjeta-ok border border-emerald-200 bg-emerald-50 rounded-md p-3 text-xs font-semibold text-emerald-800">${nombre} (fila ${h.fila})${comite}: cuadra todo</div>`;
   }
@@ -131,6 +140,13 @@ function render(data, primera) {
   TOKEN = data.token;
   const a = document.getElementById("descarga");
   a.href = data.descarga; a.classList.remove("hidden");
+  const ac = document.getElementById("descarga-contab");
+  ac.href = data.descarga_contabilidad; ac.classList.remove("hidden");
+  const celdas = (data.cambios || []).reduce((s, c) => s + c.celdas.length, 0);
+  const nuevas = (data.cambios || []).filter(c => c.nueva).length;
+  const cam = document.getElementById("cambios");
+  cam.textContent = celdas ? `Se escriben ${celdas} celdas${nuevas ? ` (${nuevas} fila(s) nueva(s))` : ""} en JP/RC` : "No hay nada que corregir";
+  cam.classList.remove("hidden");
   const hayPreguntas = dias.some(d => d.hojas.JP.pregunta_alquiler || d.hojas.RC.pregunta_alquiler);
   document.getElementById("aplicar").classList.toggle("hidden", !hayPreguntas);
   document.getElementById("resultados").innerHTML = dias.map(d => `
@@ -154,6 +170,8 @@ document.getElementById("form").addEventListener("submit", async e => {
   err.classList.add("hidden");
   document.getElementById("resultados").innerHTML = "";
   document.getElementById("descarga").classList.add("hidden");
+  document.getElementById("descarga-contab").classList.add("hidden");
+  document.getElementById("cambios").classList.add("hidden");
   document.getElementById("aplicar").classList.add("hidden");
   document.getElementById("resumen").classList.add("hidden");
   btn.disabled = true; btn.textContent = "Validando...";

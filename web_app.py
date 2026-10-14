@@ -21,7 +21,7 @@ from flask import Flask, abort, jsonify, redirect, render_template, request, sen
 from flask_wtf import CSRFProtect
 from flask_wtf.csrf import CSRFError
 
-from karina import excel_io, reglas, reporte, validador
+from karina import excel_io, llenado, reglas, reporte, validador
 from karina.opencorp_scraper import OpenCorpScraperError
 
 
@@ -163,6 +163,9 @@ def api_validar():
             "registros": registros,
             "encabezados": excel_io.leer_encabezados(wb_contab, ("JP", "RC")),
             "nombre": nombre,
+            # bytes originales: el CONTABILIDAD lleno se arma sobre ellos
+            "contabilidad": rutas[1].read_bytes(),
+            "nombre_contabilidad": f"CONTABILIDAD_llena_{hasta.isoformat()}.xlsx",
         }
         session["reporte"] = token
         return jsonify(_validar_guardado(token, {}))
@@ -176,15 +179,22 @@ def api_validar():
 
 def _validar_guardado(token, respuestas):
     """Corre la validacion con los datos guardados del token y regenera el
-    Excel. `respuestas` = {"AAAA-MM-DD": {"JP": valor, "RC": valor}}."""
+    Excel de reporte y el CONTABILIDAD lleno.
+    `respuestas` = {"AAAA-MM-DD": {"JP": valor, "RC": valor}}."""
     datos = VALIDACIONES[token]
-    dias = []
-    for f, regs in datos["registros"].items():
-        res = validador.validar_fecha(f, regs, *datos["libros"], alquiler_comite=respuestas.get(f.isoformat()))
-        res["fecha"] = f.isoformat()
-        dias.append(res)
+    wb_caja3, wb_contab, wb_contab_f = datos["libros"]
+    fechas = list(datos["registros"])
+    resp = {dt.date.fromisoformat(k): v for k, v in respuestas.items()}
+    dias = validador.validar_rango(fechas, datos["registros"], wb_caja3, wb_contab, wb_contab_f, resp)
     datos["excel"] = reporte.generar_excel(dias, datos["encabezados"])
-    return {"dias": dias, "token": token, "descarga": url_for("descargar", token=token)}
+    datos["excel_contabilidad"], cambios = llenado.llenar(datos["contabilidad"], dias, wb_contab_f, wb_contab)
+    for d in dias:
+        d["fecha"] = d["fecha"].isoformat()
+    return {
+        "dias": dias, "token": token, "cambios": cambios,
+        "descarga": url_for("descargar", token=token),
+        "descarga_contabilidad": url_for("descargar_contabilidad", token=token),
+    }
 
 
 def _leer_respuestas(cuerpo):
@@ -208,6 +218,16 @@ def api_alquiler_comite(token):
     except (ValueError, TypeError, AttributeError):
         return jsonify({"error": "Valor de alquiler inválido: usa solo números."}), 400
     return jsonify(_validar_guardado(token, respuestas))
+
+
+@app.route("/descargar-contabilidad/<token>")
+def descargar_contabilidad(token):
+    if token not in VALIDACIONES or session.get("reporte") != token:
+        abort(404)
+    datos = VALIDACIONES[token]
+    return send_file(io.BytesIO(datos["excel_contabilidad"]), as_attachment=True,
+                     download_name=datos["nombre_contabilidad"],
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 @app.route("/descargar/<token>")

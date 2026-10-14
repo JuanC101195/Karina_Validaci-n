@@ -72,7 +72,7 @@ window.Animaciones = (function () {
     let celdas = 0, difs = 0, cuadran = 0, total = 0;
     dias.forEach(d => ["JP", "RC"].forEach(h => {
       const x = d.hojas[h];
-      if (x.fila === null) return;
+      if (x.fila === null || x.nueva) return;
       total += 1;
       celdas += Object.keys(x.esperado).length;
       difs += x.diferencias.length;

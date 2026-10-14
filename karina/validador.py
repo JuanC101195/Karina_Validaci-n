@@ -36,21 +36,29 @@ def recaudo_general(scraper, fecha):
     return resp.get("data") or []
 
 
-def validar_fecha(fecha, registros, wb_caja3, wb_contabilidad, wb_contabilidad_formulas=None, alquiler_comite=None):
-    """Valida una fecha con los registros de OpenCorp ya descargados.
+def validar_fecha(fecha, registros, wb_caja3, wb_contabilidad, wb_contabilidad_formulas=None,
+                  alquiler_comite=None, previo=None):
+    """Valida (y prepara el llenado de) una fecha con los registros de OpenCorp.
 
-    `wb_contabilidad_formulas` (el mismo libro sin data_only) habilita la
-    revision de los acumulados O/W; sin el, esas columnas no se validan.
-    `alquiler_comite` = {"JP": valor, "RC": valor}: alquiler total que
-    digita Karina el dia del comite (ver reglas.separar_alquiler).
+    `wb_contabilidad_formulas` (el mismo libro sin data_only) habilita los
+    acumulados O/W. `alquiler_comite` = {"JP": valor, "RC": valor} (ver
+    reglas.separar_alquiler). `previo` = resultado["hojas"] del dia anterior
+    del mismo rango: encadena la fila y los acumulados cuando el dia anterior
+    tambien se esta llenando.
 
-    Devuelve {"fecha", "avisos", "hojas": {"JP": {...}, "RC": {...}}}.
+    Si la fecha no tiene fila en CONTABILIDAD (fila borrada o aun no creada)
+    se asigna la siguiente a la ultima fecha anterior, si esta vacia: el
+    programa la llena (confirmado con el usuario 2026-10-14: la finalidad es
+    llenar, no solo comparar).
+
+    Devuelve {"fecha", "registros", "avisos", "hojas": {"JP": {...}, "RC": {...}}}.
     """
     avisos = []
     recaudo, avisos_recaudo = reglas.agrupar_recaudo(registros)
     avisos.extend(avisos_recaudo)
     resultado = {"fecha": fecha, "registros": len(registros), "avisos": avisos, "hojas": {}}
     alquiler_comite = alquiler_comite or {}
+    previo = previo or {}
     for hoja in reglas.HOJAS:
         esperado = dict(recaudo[hoja])
         es_comite = False
@@ -67,20 +75,71 @@ def validar_fecha(fecha, registros, wb_caja3, wb_contabilidad, wb_contabilidad_f
             aviso = reglas.pronto_caja3_vs_sistema(caja3["pronto"], esperado[reglas.COL_PRONTO])
             if aviso:
                 avisos.append(f"{hoja}: {aviso}")
-        fila = excel_io.fila_contabilidad(wb_contabilidad, hoja, fecha)
+
+        ant = previo.get(hoja) or {}
+        fila, nueva = _ubicar_fila(wb_contabilidad, hoja, fecha, ant, avisos)
+        reinicio = None
         if fila and wb_contabilidad_formulas is not None:
+            reinicio = _reinicia_acumulado(wb_contabilidad, wb_caja3, hoja, fila, ant)
             acum = excel_io.leer_acumulados(wb_contabilidad, wb_contabilidad_formulas, hoja, fila, avisos)
             for col in reglas.ACUMULADOS:
                 info = acum[col]
-                reinicio = reglas.es_reinicio(info["formula"], col, fila)
-                esperado[col] = reglas.acumulado_esperado(col, esperado, acum["P"], info["anterior"], reinicio)
-                avisos.extend(f"{hoja}: {a}" for a in reglas.revisar_formula_acumulado(col, info["formula"], fila))
-        fila, actual = excel_io.leer_contabilidad(wb_contabilidad, hoja, fecha, esperado.keys(), avisos)
+                # El acumulado de ayer: si ayer tambien se esta llenando en este
+                # rango, el valor correcto calculado; si no, el de CONTABILIDAD.
+                if ant.get("fila") == fila - 1 and col in ant.get("esperado", {}):
+                    anterior = ant["esperado"][col]
+                else:
+                    anterior = info["anterior"]
+                esperado[col] = reglas.acumulado_esperado(col, esperado, acum["P"], anterior, reinicio)
+                if not nueva:
+                    avisos.extend(f"{hoja}: {a}" for a in reglas.revisar_formula_acumulado(col, info["formula"], fila, reinicio))
+        actual = excel_io.leer_fila_contabilidad(wb_contabilidad, hoja, fila, esperado.keys(), avisos) if fila else {}
         resultado["hojas"][hoja] = {
             "fila": fila,
+            "nueva": nueva,
+            "reinicio": reinicio,
             "comite": es_comite,
             "pregunta_alquiler": pregunta,
             "esperado": esperado,
-            "diferencias": reglas.comparar(esperado, actual) if fila else [],
+            "diferencias": [] if nueva or not fila else reglas.comparar(esperado, actual),
         }
     return resultado
+
+
+def _ubicar_fila(wb, hoja, fecha, ant, avisos):
+    """(fila, nueva). nueva=True: la fecha no esta y se usa la fila vacia
+    que sigue a la ultima fecha anterior."""
+    fila = excel_io.fila_contabilidad(wb, hoja, fecha)
+    if fila:
+        return fila, False
+    base = ant.get("fila") or excel_io.ultima_fila_antes(wb, hoja, fecha)
+    if base and excel_io.fila_vacia(wb, hoja, base + 1):
+        avisos.append(f"{hoja}: CONTABILIDAD no tiene fila para {fecha}; se llena la fila {base + 1}")
+        return base + 1, True
+    avisos.append(f"CONTABILIDAD ({hoja}) no tiene fila para {fecha} y no hay una fila vacia donde crearla")
+    return None, False
+
+
+def _reinicia_acumulado(wb_contab, wb_caja3, hoja, fila, ant):
+    """ACUM/RPTOS se reinician el dia siguiente al comite (todos los viernes):
+    se mira si el dia de la fila anterior fue comite en Caja 3."""
+    if ant.get("fila") == fila - 1:
+        return bool(ant.get("comite"))
+    fecha_ant = excel_io.fecha_de_fila(wb_contab, hoja, fila - 1)
+    if fecha_ant is None or wb_caja3 is None:
+        return False
+    c3 = excel_io.leer_caja3(wb_caja3, hoja, fecha_ant, [])
+    return bool(c3 and (c3["gastos"] or c3["retiro"]))
+
+
+def validar_rango(fechas, registros_por_fecha, wb_caja3, wb_contab, wb_contab_f, respuestas=None):
+    """Valida varias fechas en orden, encadenando filas y acumulados.
+    `respuestas` = {fecha: {"JP": alquiler, "RC": alquiler}}."""
+    respuestas = respuestas or {}
+    dias, previo = [], None
+    for f in fechas:
+        res = validar_fecha(f, registros_por_fecha[f], wb_caja3, wb_contab, wb_contab_f,
+                            alquiler_comite=respuestas.get(f), previo=previo)
+        dias.append(res)
+        previo = res["hojas"]
+    return dias

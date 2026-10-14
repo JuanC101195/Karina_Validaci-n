@@ -8,7 +8,7 @@ import argparse
 import datetime as dt
 import sys
 
-from karina import excel_io, reglas, reporte, validador
+from karina import excel_io, llenado, reglas, reporte, validador
 
 
 def _fecha(texto):
@@ -24,6 +24,9 @@ def imprimir(res):
     for hoja, h in res["hojas"].items():
         if h["fila"] is None:
             print(f"== {hoja}: sin fila en CONTABILIDAD")
+            continue
+        if h.get("nueva"):
+            print(f"== {hoja} fila {h['fila']}: FILA NUEVA, se llena completa")
             continue
         marca = " [comite]" if h["comite"] else ""
         if h.get("pregunta_alquiler") and h["pregunta_alquiler"]["pendiente"]:
@@ -44,6 +47,7 @@ def main(argv=None):
     p.add_argument("--desde", type=_fecha)
     p.add_argument("--hasta", type=_fecha)
     p.add_argument("--out", help="ruta del Excel de salida con las pestañas JP y RC")
+    p.add_argument("--out-contabilidad", help="ruta del CONTABILIDAD lleno (copia del subido con JP/RC escritos)")
     p.add_argument("--alquiler-comite", action="append", default=[], metavar="AAAA-MM-DD:HOJA=VALOR",
                    help="alquiler total del dia de comite (la diferencia con Caja 3 es la inversion en motos); repetible")
     args = p.parse_args(argv)
@@ -71,12 +75,18 @@ def main(argv=None):
     wb_caja3 = excel_io.abrir(args.caja3)
     wb_contab = excel_io.abrir(args.contabilidad)
     wb_contab_f = excel_io.abrir_formulas(args.contabilidad)
-    dias = []
-    for f in fechas:
-        registros = validador.recaudo_general(scraper, f)
-        res = validador.validar_fecha(f, registros, wb_caja3, wb_contab, wb_contab_f, alquiler_comite=alquileres.get(f))
+    registros = {f: validador.recaudo_general(scraper, f) for f in fechas}
+    dias = validador.validar_rango(fechas, registros, wb_caja3, wb_contab, wb_contab_f, alquileres)
+    for res in dias:
         imprimir(res)
-        dias.append(res)
+    if args.out_contabilidad:
+        with open(args.contabilidad, "rb") as fh:
+            datos, cambios = llenado.llenar(fh.read(), dias, wb_contab_f, wb_contab)
+        with open(args.out_contabilidad, "wb") as fh:
+            fh.write(datos)
+        for c in cambios:
+            print(f"  {c['fecha']} {c['hoja']} fila {c['fila']}{' (nueva)' if c['nueva'] else ''}: {len(c['celdas'])} celdas -> {', '.join(c['celdas'])}")
+        print(f"\nCONTABILIDAD lleno: {args.out_contabilidad}")
     if args.out:
         encabezados = excel_io.leer_encabezados(wb_contab, ("JP", "RC"))
         with open(args.out, "wb") as fh:
