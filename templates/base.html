@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <title>{% block title %}Validaciones Karina{% endblock %}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+  <link href="{{ url_for('static', filename='css/app.css') }}" rel="stylesheet"/>
+  <meta name="csrf-token" content="{{ csrf_token() }}"/>
+  <script src="{{ url_for('static', filename='js/tailwind.min.js') }}"></script>
+  <script>
+    tailwind.config = { theme: { extend: { fontFamily: { mono: ['JetBrains Mono', 'monospace'] } } } };
+    // Mismo parche que Empresa_no_pago: agrega el token CSRF a todo POST del mismo origen.
+    (function () {
+      var token = document.querySelector('meta[name="csrf-token"]').content;
+      var fetchOriginal = window.fetch;
+      window.fetch = function (recurso, opciones) {
+        opciones = opciones || {};
+        var metodo = (opciones.method || "GET").toUpperCase();
+        if (metodo !== "GET" && typeof recurso === "string" && !/^[a-z]+:\/\//i.test(recurso)) {
+          opciones.headers = Object.assign({}, opciones.headers, { "X-CSRFToken": token });
+        }
+        return fetchOriginal(recurso, opciones);
+      };
+    })();
+  </script>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased font-sans {% block body_class %}p-6{% endblock %}">
+  {% block body %}{% endblock %}
+</body>
+</html>

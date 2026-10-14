@@ -6,7 +6,7 @@ importa el valor que Excel/Sheets ya calculo, no la formula.
 import datetime as dt
 
 import openpyxl
-from openpyxl.utils import column_index_from_string
+from openpyxl.utils import column_index_from_string, get_column_letter
 
 from .reglas import CAJA3
 
@@ -57,6 +57,7 @@ def leer_caja3(wb, hoja, fecha, avisos):
     leer = lambda col: _numero(ws, fila, col, avisos, origen)
     return {
         "ajustes": leer(cfg["ajustes"]),
+        "ajustes_multas": leer(cfg["ajustes_multas"]),
         "pronto": leer(cfg["pronto"]),
         "alquiler": leer(cfg["alquiler"]),
         "traslado": leer(cfg["traslado"]),
@@ -67,17 +68,58 @@ def leer_caja3(wb, hoja, fecha, avisos):
     }
 
 
+def leer_encabezados(wb, hojas, ultima_col="AJ"):
+    """Filas 2 y 3 de cada pestaña (grupo y nombre de columna), para que el
+    Excel de salida tenga los mismos titulos que CONTABILIDAD."""
+    salida = {}
+    for hoja in hojas:
+        ws = wb[hoja]
+        n = column_index_from_string(ultima_col)
+        fila2, fila3 = {}, {}
+        for c in range(1, n + 1):
+            # get_column_letter y no cell.column_letter: los titulos de grupo
+            # (RECAUDOS EFECTIVOS, MULTAS...) son celdas combinadas.
+            col = get_column_letter(c)
+            fila2[col] = ws.cell(2, c).value
+            fila3[col] = ws.cell(3, c).value
+        salida[hoja] = (fila2, fila3)
+    return salida
+
+
+def abrir_formulas(path):
+    """Mismo libro sin data_only: para leer las formulas de O/W."""
+    return openpyxl.load_workbook(path)
+
+
+def leer_acumulados(wb_valores, wb_formulas, hoja, fila, avisos):
+    """Insumos para recalcular ACUM (O) y RPTOS (W) de una fila:
+    acumulado del dia anterior, ajuste P y formula actual de cada columna."""
+    wv, wf = wb_valores[hoja], wb_formulas[hoja]
+    origen = f"CONTABILIDAD {hoja}"
+    datos = {"P": _numero(wv, fila, "P", avisos, origen)}
+    for col in ("O", "W"):
+        datos[col] = {
+            "anterior": _numero(wv, fila - 1, col, avisos, origen) if fila - 1 >= FILA_INICIO_CONTABILIDAD else 0.0,
+            "formula": wf[f"{col}{fila}"].value,
+        }
+    return datos
+
+
+def fila_contabilidad(wb, hoja, fecha):
+    filas = _buscar_fila(wb[hoja], COL_FECHA_CONTABILIDAD, fecha, desde=FILA_INICIO_CONTABILIDAD)
+    return filas[0] if filas else None
+
+
 def leer_contabilidad(wb, hoja, fecha, columnas, avisos):
     """Valores digitados en la pestaña JP/RC para la fecha.
 
     Devuelve (fila, {col: valor o None}); None = celda vacia.
     """
     ws = wb[hoja]
-    filas = _buscar_fila(ws, COL_FECHA_CONTABILIDAD, fecha, desde=FILA_INICIO_CONTABILIDAD)
-    if not filas:
+    fila = fila_contabilidad(wb, hoja, fecha)
+    if fila is None:
         avisos.append(f"CONTABILIDAD ({hoja}) no tiene fila para {fecha}")
         return None, {}
-    fila = filas[0]
     valores = {}
     for col in columnas:
         v = _celda(ws, fila, col)
