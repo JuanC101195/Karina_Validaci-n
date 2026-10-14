@@ -102,3 +102,20 @@ a[role="button"]:focus-visible {
     animation: none;
   }
 }
+
+/* ---- Animaciones (feat/animaciones) ---------------------------------- */
+.paso { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 6px; font-weight: 600; position: relative; overflow: hidden; }
+.paso-espera { color: #94a3b8; }
+.paso-hecho { color: #047857; background: #ecfdf5; }
+.paso-listo { color: #fff; background: #059669; }
+.paso-activo { color: #3730a3; background: #eef2ff; }
+/* Brillo que barre el paso activo ("Light Sweep") */
+.paso-activo::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(100deg, transparent 20%, rgba(255,255,255,.85) 50%, transparent 80%);
+  animation: barrido 1.4s ease-in-out infinite; }
+.paso-flecha { color: #cbd5e1; }
+.girando { animation: girar 1s linear infinite; }
+.confeti { position: fixed; width: 7px; height: 7px; border-radius: 2px; pointer-events: none; z-index: 60; }
+@keyframes barrido { to { transform: translateX(100%); } }
+@keyframes girar { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .paso-activo::after, .girando { animation: none; } }
