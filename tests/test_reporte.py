@@ -33,7 +33,8 @@ def test_celda_con_diferencia_va_en_rojo_con_nota():
     assert ws["AJ3"].fill.fgColor.rgb.endswith("F8CBAD")
     assert "6,765,387.47" in ws["AJ3"].comment.text
     assert ws["C3"].fill.fgColor.rgb.endswith("E2EFDA")
-    assert ws["AJ3"].comment is not None and _abrir(reporte.generar_excel([_dia([dif])]))["RC"]["AJ3"].comment is None
+    assert ws['AJ3'].comment is not None
+    assert _abrir(reporte.generar_excel([_dia([dif])]))['RC']['AJ3'].comment is None
 
 
 def test_avisos_de_una_hoja_no_aparecen_en_la_otra():
@@ -53,4 +54,5 @@ def test_alquiler_de_comite_pendiente_va_en_amarillo():
     d = _dia([])
     d["hojas"]["JP"]["pregunta_alquiler"] = {"total": 48840.0, "respuesta": None, "pendiente": True}
     ws = _abrir(reporte.generar_excel([d]))["JP"]
-    assert ws["AB3"].fill.fgColor.rgb.endswith("FFF2CC") and "48,840.00" in ws["AC3"].comment.text
+    assert ws['AB3'].fill.fgColor.rgb.endswith('FFF2CC')
+    assert '48,840.00' in ws['AC3'].comment.text

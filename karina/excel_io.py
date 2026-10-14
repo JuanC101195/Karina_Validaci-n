@@ -4,6 +4,7 @@ CONTABILIDAD (.xlsx descargado del Drive). Se leen con data_only=True:
 importa el valor que Excel/Sheets ya calculo, no la formula.
 """
 import datetime as dt
+import io
 
 import openpyxl
 from openpyxl.utils import column_index_from_string, get_column_letter
@@ -84,6 +85,11 @@ def leer_encabezados(wb, hojas, ultima_col="AJ"):
             fila3[col] = ws.cell(3, c).value
         salida[hoja] = (fila2, fila3)
     return salida
+
+
+def abrir_bytes(datos, formulas=False):
+    """Abre un Excel ya leido en memoria (formulas=True: sin data_only)."""
+    return openpyxl.load_workbook(io.BytesIO(datos), data_only=not formulas)
 
 
 def abrir_formulas(path):

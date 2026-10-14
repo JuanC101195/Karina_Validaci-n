@@ -11,14 +11,16 @@ import sys
 from pathlib import Path
 import PyInstaller.__main__
 
+SEPARADOR = "=" * 55
+
 def build():
     root_dir = Path(__file__).resolve().parent
     dist_dir = root_dir / "dist"
     build_dir = root_dir / "build"
 
-    print("=======================================================")
+    print(SEPARADOR)
     print(" Compilando Validaciones Karina - App de escritorio")
-    print("=======================================================")
+    print(SEPARADOR)
 
     # Limpiar compilaciones anteriores si existen
     if dist_dir.exists():
@@ -64,11 +66,11 @@ def build():
     exe_path = dist_dir / "ValidacionesKarina.exe"
     if exe_path.exists():
         size_mb = exe_path.stat().st_size / (1024 * 1024)
-        print("\n=======================================================")
-        print(f" ¡Compilación Exitosa!")
+        print("\n" + SEPARADOR)
+        print(" ¡Compilación Exitosa!")
         print(f" Ejecutable generado en: {exe_path}")
         print(f" Tamaño: {size_mb:.2f} MB")
-        print("=======================================================")
+        print(SEPARADOR)
     else:
         print("\n[!] Error: No se encontró el ejecutable en dist/.")
 

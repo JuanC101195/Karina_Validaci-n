@@ -21,7 +21,8 @@ def test_login_invalido_muestra_error(cliente, monkeypatch):
         raise OpenCorpScraperError("Usuario o contraseña incorrectos.")
     monkeypatch.setattr(web_app.validador, "conectar", falla)
     r = cliente.post("/login", data={"usuario": "a@b.co", "password": "x"})
-    assert r.status_code == 200 and "incorrectos" in r.get_data(as_text=True)
+    assert r.status_code == 200
+    assert 'incorrectos' in r.get_data(as_text=True)
 
 
 def test_login_valido_y_validar_sin_archivos(cliente, monkeypatch):
@@ -29,7 +30,8 @@ def test_login_valido_y_validar_sin_archivos(cliente, monkeypatch):
     assert cliente.post("/login", data={"usuario": "a@b.co", "password": "x"}).status_code == 302
     assert cliente.get("/").status_code == 200
     r = cliente.post("/api/validar", data={"desde": "2026-10-13"})
-    assert r.status_code == 400 and "dos archivos" in r.get_json()["error"]
+    assert r.status_code == 400
+    assert 'dos archivos' in r.get_json()['error']
 
 
 def test_alquiler_comite_con_token_ajeno(cliente, monkeypatch):

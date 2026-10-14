@@ -19,7 +19,7 @@
         opciones = opciones || {};
         var metodo = (opciones.method || "GET").toUpperCase();
         if (metodo !== "GET" && typeof recurso === "string" && !/^[a-z]+:\/\//i.test(recurso)) {
-          opciones.headers = Object.assign({}, opciones.headers, { "X-CSRFToken": token });
+          opciones.headers = { ...opciones.headers, "X-CSRFToken": token };
         }
         return fetchOriginal(recurso, opciones);
       };

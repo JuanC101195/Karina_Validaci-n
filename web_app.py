@@ -48,6 +48,7 @@ UPLOAD_DIR = Path(tempfile.mkdtemp(prefix="karina_"))
 # ultima validacion de la sesion (en memoria; se reemplaza al validar otra vez).
 VALIDACIONES = {}
 MAX_DIAS = 31
+PLANTILLA_LOGIN = "login.html"
 
 
 def _error_sesion():
@@ -75,22 +76,22 @@ def login():
         email = request.form.get("usuario", "").strip()
         password = request.form.get("password", "")
         if not email or not password:
-            return render_template("login.html", error="Usuario y contraseña son obligatorios.")
+            return render_template(PLANTILLA_LOGIN, error="Usuario y contraseña son obligatorios.")
         try:
             scraper = validador.conectar(email, password)
         except OpenCorpScraperError as e:
-            return render_template("login.html", error=str(e))
+            return render_template(PLANTILLA_LOGIN, error=str(e))
         except Exception as e:  # red caida, OpenCorp fuera de linea
-            return render_template("login.html", error=f"No se pudo conectar con OpenCorp: {e}")
+            return render_template(PLANTILLA_LOGIN, error=f"No se pudo conectar con OpenCorp: {e}")
         sesion_id = secrets.token_urlsafe(16)
         SCRAPERS[sesion_id] = scraper
         session["sesion_id"] = sesion_id
         session["usuario"] = email
         return redirect(url_for("index"))
-    return render_template("login.html", error=None)
+    return render_template(PLANTILLA_LOGIN, error=None)
 
 
-@app.route("/logout")
+@app.route("/logout", methods=["GET"])
 def logout():
     SCRAPERS.pop(session.get("sesion_id"), None)
     VALIDACIONES.pop(session.get("reporte"), None)
@@ -98,7 +99,7 @@ def logout():
     return redirect(url_for("login"))
 
 
-@app.route("/")
+@app.route("/", methods=["GET"])
 def index():
     ayer = dt.date.today() - dt.timedelta(days=1)
     if ayer.weekday() == 6:  # domingo no hay cobro
@@ -240,4 +241,5 @@ def descargar(token):
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5050)
+    # Solo desarrollo: debug si KARINA_DEBUG=1 (el .exe usa desktop_app.py).
+    app.run(debug=os.environ.get("KARINA_DEBUG") == "1", port=5050)

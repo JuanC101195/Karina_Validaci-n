@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from . import excel_io, reglas
-from .opencorp_scraper import OpenCorpScraper
+from .opencorp_scraper import ENDPOINT_NOTIFICACIONES, OpenCorpScraper
 
 BASE_URL = "https://app.opencorp.co:543"
 URL_INFORME = f"{BASE_URL}/rastreoya/recaudo?suburl=informe_recaudo_general"
@@ -29,7 +29,7 @@ def recaudo_general(scraper, fecha):
     """Registros del informe de recaudo general del dia (lista de dicts).
     'sin' = no hubo movimientos (domingo/festivo): lista vacia."""
     resp = scraper.fetch_ajax_report(
-        endpoint_path="/rastreoya/vistas/modulo/ajax/buscarNotificacion.php",
+        endpoint_path=ENDPOINT_NOTIFICACIONES,
         payload_key="LoadRecaudoGeneral",
         payload_data={"fecha": fecha.isoformat()},
     )
