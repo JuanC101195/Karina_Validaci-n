@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="max-w-6xl mx-auto space-y-6">
+  <div class="flex justify-between items-center bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-md bg-gradient-to-br from-indigo-600 to-indigo-800 text-white flex items-center justify-center font-bold text-sm">VK</div>
+      <div>
+        <h1 class="text-lg font-bold text-slate-900">Validaciones Karina</h1>
+        <p class="text-xs text-slate-500">Pestañas JP y RC de CONTABILIDAD contra OpenCorp y Caja 3</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-3 text-xs text-slate-600">
+      <span class="bg-slate-100 px-3 py-1.5 rounded-md font-medium flex items-center gap-1.5">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> OpenCorp: {{ usuario }}
+      </span>
+      <a href="/logout" class="text-slate-500 hover:text-slate-900">Salir</a>
+    </div>
+  </div>
+
+  <form id="form" class="bg-white border border-slate-200 rounded-lg p-5 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+    <label class="text-xs font-semibold text-slate-700 space-y-1.5 md:col-span-1">
+      <span>Caja 3 (.xlsm)</span>
+      <input name="caja3" type="file" accept=".xlsm,.xlsx" required class="block w-full text-xs"/>
+    </label>
+    <label class="text-xs font-semibold text-slate-700 space-y-1.5 md:col-span-1">
+      <span>CONTABILIDAD (.xlsx del Drive)</span>
+      <input name="contabilidad" type="file" accept=".xlsx" required class="block w-full text-xs"/>
+    </label>
+    <div class="grid grid-cols-2 gap-2 md:col-span-1">
+      <label class="text-xs font-semibold text-slate-700 space-y-1.5">
+        <span>Desde</span>
+        <input name="desde" type="date" value="{{ fecha_defecto }}" required class="w-full h-9 px-2 rounded-md border border-slate-300 text-xs"/>
+      </label>
+      <label class="text-xs font-semibold text-slate-700 space-y-1.5">
+        <span>Hasta</span>
+        <input name="hasta" type="date" value="{{ fecha_defecto }}" class="w-full h-9 px-2 rounded-md border border-slate-300 text-xs"/>
+      </label>
+    </div>
+    <button id="btn" class="h-9 rounded-md bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-semibold" type="submit">Validar</button>
+  </form>
+
+  <div id="error" class="hidden rounded-md border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 font-medium"></div>
+  <div class="flex flex-wrap gap-2">
+  <button id="aplicar" type="button" class="hidden h-9 px-4 rounded-md bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-semibold">Aplicar alquiler de comité y recalcular</button>
+  <a id="descarga" href="#" class="hidden inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold">
+    <span class="material-symbols-outlined text-[16px]">download</span> Descargar Excel JP / RC
+  </a>
+  </div>
+  <div id="resultados" class="space-y-4"></div>
+</div>
+
+<script>
+const fmt = v => v === null || v === undefined ? "(vacía)" : Number(v).toLocaleString("es-CO", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+let TOKEN = null;
+
+// Dia de comite: Caja 3 trae alquiler + inversion en motos en la misma
+// columna. Karina digita el alquiler total y la diferencia es la inversion.
+function preguntaAlquiler(fecha, nombre, h) {
+  const p = h.pregunta_alquiler;
+  if (!p) return "";
+  const valor = p.respuesta === null || p.respuesta === undefined ? "" : p.respuesta;
+  const estado = p.pendiente
+    ? `<span class="text-amber-700 font-semibold">Pendiente</span>`
+    : `<span class="text-emerald-700">Alquiler ${fmt(p.respuesta)} · Inversión motos ${fmt(p.total - p.respuesta)}</span>`;
+  return `
+    <div class="border border-indigo-200 bg-indigo-50 rounded-md p-3 text-xs space-y-2">
+      <div class="font-semibold text-indigo-900">${nombre} · Comité: Caja 3 trae ${fmt(p.total)} en "alquiler" (alquiler + inversión en motos)</div>
+      <label class="flex items-center gap-2">
+        <span>¿Cuánto es el alquiler total?</span>
+        <input type="text" inputmode="decimal" class="alquiler-comite w-32 h-8 px-2 rounded border border-slate-300 font-mono text-right"
+               data-fecha="${esc(fecha)}" data-hoja="${nombre}" value="${esc(valor)}" placeholder="0"/>
+        ${estado}
+      </label>
+    </div>`;
+}
+
+function tarjetaHoja(nombre, h) {
+  if (h.fila === null) {
+    return `<div class="border border-amber-200 bg-amber-50 rounded-md p-3 text-xs">${nombre}: no hay fila para esta fecha en CONTABILIDAD.</div>`;
+  }
+  const pend = h.pregunta_alquiler && h.pregunta_alquiler.pendiente
+    ? `<span class="ml-2 text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">AB/AC pendientes</span>` : "";
+  const comite = (h.comite ? `<span class="ml-2 text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded">comité</span>` : "") + pend;
+  if (!h.diferencias.length) {
+    return `<div class="border border-emerald-200 bg-emerald-50 rounded-md p-3 text-xs font-semibold text-emerald-800">${nombre} (fila ${h.fila})${comite}: cuadra todo</div>`;
+  }
+  const filas = h.diferencias.map(d => `
+    <tr class="border-t border-slate-100">
+      <td class="py-1.5 px-2 font-mono">${esc(d.columna)}${h.fila}</td>
+      <td class="py-1.5 px-2">${esc(d.concepto)}</td>
+      <td class="py-1.5 px-2 text-right font-mono">${fmt(d.excel)}</td>
+      <td class="py-1.5 px-2 text-right font-mono">${fmt(d.esperado)}</td>
+      <td class="py-1.5 px-2 text-right font-mono font-semibold ${d.diferencia > 0 ? "text-rose-700" : "text-amber-700"}">${d.diferencia > 0 ? "+" : ""}${fmt(d.diferencia)}</td>
+    </tr>`).join("");
+  return `
+    <div class="border border-rose-200 rounded-md overflow-hidden">
+      <div class="bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800">${nombre} (fila ${h.fila})${comite}: ${h.diferencias.length} diferencia(s)</div>
+      <table class="w-full text-xs">
+        <thead class="text-slate-500"><tr>
+          <th class="py-1.5 px-2 text-left">Celda</th><th class="py-1.5 px-2 text-left">Concepto</th>
+          <th class="py-1.5 px-2 text-right">En el Excel</th><th class="py-1.5 px-2 text-right">Debería ser</th><th class="py-1.5 px-2 text-right">Diferencia</th>
+        </tr></thead>
+        <tbody>${filas}</tbody>
+      </table>
+    </div>`;
+}
+
+function render(data) {
+  const dias = data.dias;
+  TOKEN = data.token;
+  const a = document.getElementById("descarga");
+  a.href = data.descarga; a.classList.remove("hidden");
+  const hayPreguntas = dias.some(d => d.hojas.JP.pregunta_alquiler || d.hojas.RC.pregunta_alquiler);
+  document.getElementById("aplicar").classList.toggle("hidden", !hayPreguntas);
+  document.getElementById("resultados").innerHTML = dias.map(d => `
+    <div class="bg-white border border-slate-200 rounded-lg p-5 shadow-sm space-y-3">
+      <div class="flex justify-between items-baseline">
+        <h2 class="text-sm font-bold text-slate-900">${esc(d.fecha)}</h2>
+        <span class="text-[11px] text-slate-500">${d.registros} registros en OpenCorp</span>
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div class="space-y-2">${preguntaAlquiler(d.fecha, "JP", d.hojas.JP)}${tarjetaHoja("JP", d.hojas.JP)}</div>
+        <div class="space-y-2">${preguntaAlquiler(d.fecha, "RC", d.hojas.RC)}${tarjetaHoja("RC", d.hojas.RC)}</div>
+      </div>
+      ${d.avisos.length ? `<ul class="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-md p-2 space-y-0.5">${d.avisos.map(a => `<li>⚠ ${esc(a)}</li>`).join("")}</ul>` : ""}
+    </div>`).join("");
+}
+
+document.getElementById("form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const btn = document.getElementById("btn"), err = document.getElementById("error");
+  err.classList.add("hidden");
+  document.getElementById("resultados").innerHTML = "";
+  document.getElementById("descarga").classList.add("hidden");
+  btn.disabled = true; btn.textContent = "Validando...";
+  try {
+    const resp = await fetch("/api/validar", {method: "POST", body: new FormData(e.target)});
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || "Error inesperado");
+    render(data);
+  } catch (ex) {
+    err.textContent = ex.message; err.classList.remove("hidden");
+  } finally {
+    btn.disabled = false; btn.textContent = "Validar";
+  }
+});
+document.getElementById("aplicar").addEventListener("click", async () => {
+  const btn = document.getElementById("aplicar"), err = document.getElementById("error");
+  err.classList.add("hidden");
+  const respuestas = {};
+  document.querySelectorAll(".alquiler-comite").forEach(i => {
+    respuestas[i.dataset.fecha] = respuestas[i.dataset.fecha] || {};
+    respuestas[i.dataset.fecha][i.dataset.hoja] = i.value.trim();
+  });
+  btn.disabled = true; btn.textContent = "Recalculando...";
+  try {
+    const resp = await fetch(`/api/alquiler-comite/${TOKEN}`, {
+      method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({respuestas})});
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || "Error inesperado");
+    render(data);
+  } catch (ex) {
+    err.textContent = ex.message; err.classList.remove("hidden");
+  } finally {
+    btn.disabled = false; btn.textContent = "Aplicar alquiler de comité y recalcular";
+  }
+});
+</script>
+{% endblock %}

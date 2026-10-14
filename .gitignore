@@ -13,3 +13,6 @@ venv/
 # Credenciales locales de OpenCorp -- ver opencorp_creds.json.example
 opencorp_creds.json
 downloads/
+build/
+dist/
+*.spec

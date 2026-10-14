@@ -1,0 +1,104 @@
+/* Estilos compartidos por todas las paginas -- extraido de los <style>
+   inline duplicados en cada template (index.html, resultados*.html)
+   durante la modularizacion 2026-09-23. Cambios aca aplican a toda la
+   app; no duplicar reglas de vuelta en un template individual. */
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Foco visible en TODOS los botones y links con rol de boton (2026-09-26,
+   hallazgo del skill ui-ux-pro-max, "Accessibility" -- prioridad 1/10:
+   "Removing focus rings" es el anti-patron mas critico de la lista).
+   Antes solo los <input> tenian focus:ring explicito -- los botones
+   dependian del outline por defecto del navegador, que varia mucho entre
+   navegadores/SO. Un solo lugar para las ~6 plantillas, consistente con
+   el esmeralda ya usado en toda la app (nunca reinventar el color de
+   foco por pagina). :focus-visible (no :focus a secas) para que solo se
+   vea al navegar con teclado, nunca al hacer click con mouse/touch. */
+button:focus-visible,
+a[role="button"]:focus-visible {
+  outline: 2px solid #10b981; /* emerald-500 */
+  outline-offset: 2px;
+}
+
+/* Pista y moto animada en el banner "Procesando..." de index.html
+   (2026-09-26, ajustado 2026-09-30 dos veces: primero se quito el
+   wheelie/salto acrobatico de Antigravity, "no parece una moto"; el
+   usuario tampoco quedo conforme con el leve rebote/rotacion que quedo
+   despues -- "no me gusto el salto" -- asi que ahora es un recorrido
+   PURO en linea recta, sin ninguna rotacion. Se agrego una estela de
+   polvo detras (pedido del usuario, "dejar como polvo mientras va
+   pasando" -- ver .moto-polvo, misma franja horizontal, timing
+   levemente retrasado via animation-delay negativo para que se vea
+   arrastrada). CSS puro (no depende de Motion cargando) --
+   @media (prefers-reduced-motion) desactiva ambas. */
+.moto-cargando {
+  animation: moto-cargando-recorrido 1.4s linear infinite;
+  display: inline-block;
+}
+@keyframes moto-cargando-recorrido {
+  0% {
+    left: -18px;
+  }
+  100% {
+    left: 100%;
+  }
+}
+.moto-polvo {
+  position: absolute;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 9999px;
+  background: #6ee7b7; /* emerald-300, sutil sobre el fondo emerald-50 */
+  opacity: 0;
+  animation: moto-polvo-rastro 1.4s linear infinite;
+}
+@keyframes moto-polvo-rastro {
+  0% {
+    left: -18px;
+    opacity: 0;
+    transform: translateY(-50%) scale(1);
+  }
+  15% {
+    opacity: .5;
+  }
+  60% {
+    opacity: .15;
+  }
+  100% {
+    left: 92%;
+    opacity: 0;
+    transform: translateY(-50%) scale(.3);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .moto-cargando {
+    animation: none;
+    left: 4px;
+  }
+  .moto-polvo {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* Parpadeo de alerta en el checklist de Validaciones (2026-09-27, pedido
+   del usuario: "que tenga movimiento... algo parpadeando" en la pagina
+   del checklist) -- un anillo rojo que respira alrededor del icono "X"
+   de cada item que NO paso, mas urgente que el animate-pulse (solo
+   opacidad) que ya usa Tailwind en los "check" verdes -- para que la
+   atencion se vaya directo a lo que necesita revision manual. */
+.parpadeo-alerta {
+  animation: parpadeo-alerta-anillo 1.6s ease-in-out infinite;
+}
+@keyframes parpadeo-alerta-anillo {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(225, 29, 72, 0.45); }
+  50% { box-shadow: 0 0 0 6px rgba(225, 29, 72, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .parpadeo-alerta {
+    animation: none;
+  }
+}
