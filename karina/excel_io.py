@@ -110,6 +110,44 @@ def fila_contabilidad(wb, hoja, fecha):
     return filas[0] if filas else None
 
 
+def leer_fila_contabilidad(wb, hoja, fila, columnas, avisos):
+    """Valores digitados en una fila de JP/RC: {col: valor o None}; None = vacia."""
+    ws = wb[hoja]
+    valores = {}
+    for col in columnas:
+        v = _celda(ws, fila, col)
+        if v is None or v == "":
+            valores[col] = None
+        elif isinstance(v, (int, float)):
+            valores[col] = float(v)
+        else:
+            avisos.append(f"CONTABILIDAD {hoja} {col}{fila}: valor no numerico {v!r}")
+            valores[col] = None
+    return valores
+
+
+def fecha_de_fila(wb, hoja, fila):
+    v = wb[hoja].cell(fila, COL_FECHA_CONTABILIDAD).value
+    return v.date() if isinstance(v, dt.datetime) else None
+
+
+def ultima_fila_antes(wb, hoja, fecha):
+    """Fila de la ultima fecha anterior a `fecha` (None si no hay)."""
+    ws = wb[hoja]
+    objetivo = dt.datetime.combine(fecha, dt.time())
+    mejor = None
+    for r in range(FILA_INICIO_CONTABILIDAD, ws.max_row + 1):
+        v = ws.cell(r, COL_FECHA_CONTABILIDAD).value
+        if isinstance(v, dt.datetime) and v < objetivo:
+            mejor = r
+    return mejor
+
+
+def fila_vacia(wb, hoja, fila):
+    ws = wb[hoja]
+    return all(ws.cell(fila, c).value in (None, "") for c in range(1, 37))
+
+
 def leer_contabilidad(wb, hoja, fecha, columnas, avisos):
     """Valores digitados en la pestaña JP/RC para la fecha.
 

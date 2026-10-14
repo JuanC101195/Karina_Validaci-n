@@ -212,6 +212,12 @@ NOMBRES_COLUMNA["O"] = "ACUM MULTAS"
 NOMBRES_COLUMNA["W"] = "ACUM REPUESTOS"
 
 
+def formula_acumulado(col, fila, reinicio):
+    """Formula correcta de O/W para la fila (sin '=')."""
+    base = ACUMULADOS[col]["rango"].format(r=fila)
+    return base if reinicio else f"{base}+{col}{fila - 1}"
+
+
 def es_reinicio(formula, col, fila):
     """El dia de reinicio la formula no suma el acumulado de la fila anterior."""
     return f"{col}{fila - 1}" not in (formula or "").upper().replace("$", "")
@@ -226,7 +232,7 @@ def acumulado_esperado(col, esperado, ajustes_p, anterior, reinicio):
     return total if reinicio else total + (anterior or 0.0)
 
 
-def revisar_formula_acumulado(col, formula, fila):
+def revisar_formula_acumulado(col, formula, fila, reinicio=None):
     """Avisos sobre la formula de O/W: que tenga la forma correcta y que no
     esconda numeros escritos a mano (ej. '...+W475-155.5')."""
     avisos = []
@@ -234,7 +240,9 @@ def revisar_formula_acumulado(col, formula, fila):
         return [f"{col}{fila}: no es formula (valor fijo {formula!r}); debe ser ={ACUMULADOS[col]['rango'].format(r='')}…"]
     f = formula.upper().replace(" ", "").replace("$", "").replace("SUMA(", "SUM(").replace(";", ",")
     base = "=" + ACUMULADOS[col]["rango"].format(r=fila)
-    correcta = base if es_reinicio(formula, col, fila) else f"{base}+{col}{fila - 1}"
+    if reinicio is None:
+        reinicio = es_reinicio(formula, col, fila)
+    correcta = base if reinicio else f"{base}+{col}{fila - 1}"
     if f != correcta:
         avisos.append(f"{col}{fila}: formula {formula} distinta de la correcta {correcta}")
     sin_celdas = re.sub(r"[A-Z]{1,3}\d+", "", f)

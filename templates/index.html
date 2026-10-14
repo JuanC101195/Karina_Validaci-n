@@ -39,16 +39,40 @@
     <button id="btn" class="h-9 rounded-md bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-semibold" type="submit">Validar</button>
   </form>
 
+  <div id="progreso" class="hidden flex flex-wrap items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-4 py-3 shadow-sm text-xs" aria-live="polite"></div>
+
+  <div id="resumen" class="hidden grid grid-cols-3 gap-3">
+    <div class="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
+      <div class="text-[11px] text-slate-500 font-medium">Celdas revisadas</div>
+      <div id="cnt-celdas" class="text-2xl font-bold text-slate-900 font-mono">0</div>
+    </div>
+    <div class="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
+      <div class="text-[11px] text-slate-500 font-medium">Diferencias</div>
+      <div id="cnt-difs" class="text-2xl font-bold text-rose-700 font-mono">0</div>
+    </div>
+    <div class="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
+      <div class="text-[11px] text-slate-500 font-medium">Pestañas que cuadran</div>
+      <div class="text-2xl font-bold text-emerald-700 font-mono"><span id="cnt-cuadran">0</span><span class="text-sm text-slate-400"> / <span id="cnt-total">0</span></span></div>
+    </div>
+  </div>
+
   <div id="error" class="hidden rounded-md border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 font-medium"></div>
   <div class="flex flex-wrap gap-2">
   <button id="aplicar" type="button" class="hidden h-9 px-4 rounded-md bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-semibold">Aplicar alquiler de comité y recalcular</button>
   <a id="descarga" href="#" class="hidden inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold">
     <span class="material-symbols-outlined text-[16px]">download</span> Descargar Excel JP / RC
   </a>
+  <a id="descarga-contab" href="#" class="hidden inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-sky-700 hover:bg-sky-800 text-white text-xs font-semibold"
+     title="Copia del CONTABILIDAD que subiste, con JP y RC llenos y corregidos. Solo se tocan esas dos pestañas.">
+    <span class="material-symbols-outlined text-[16px]">edit_document</span> Descargar CONTABILIDAD llena
+  </a>
+  <span id="cambios" class="hidden self-center text-[11px] text-slate-500"></span>
   </div>
   <div id="resultados" class="space-y-4"></div>
 </div>
 
+<script src="{{ url_for('static', filename='js/gsap.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/animaciones.js') }}"></script>
 <script>
 const fmt = v => v === null || v === undefined ? "(vacía)" : Number(v).toLocaleString("es-CO", {minimumFractionDigits: 2, maximumFractionDigits: 2});
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -65,7 +89,7 @@ function preguntaAlquiler(fecha, nombre, h) {
     ? `<span class="text-amber-700 font-semibold">Pendiente</span>`
     : `<span class="text-emerald-700">Alquiler ${fmt(p.respuesta)} · Inversión motos ${fmt(p.total - p.respuesta)}</span>`;
   return `
-    <div class="border border-indigo-200 bg-indigo-50 rounded-md p-3 text-xs space-y-2">
+    <div class="pregunta-comite border border-indigo-200 bg-indigo-50 rounded-md p-3 text-xs space-y-2">
       <div class="font-semibold text-indigo-900">${nombre} · Comité: Caja 3 trae ${fmt(p.total)} en "alquiler" (alquiler + inversión en motos)</div>
       <label class="flex items-center gap-2">
         <span>¿Cuánto es el alquiler total?</span>
@@ -83,11 +107,15 @@ function tarjetaHoja(nombre, h) {
   const pend = h.pregunta_alquiler && h.pregunta_alquiler.pendiente
     ? `<span class="ml-2 text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">AB/AC pendientes</span>` : "";
   const comite = (h.comite ? `<span class="ml-2 text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded">comité</span>` : "") + pend;
+  if (h.nueva) {
+    const n = Object.keys(h.esperado).length;
+    return `<div class="tarjeta-nueva border border-sky-200 bg-sky-50 rounded-md p-3 text-xs font-semibold text-sky-800">${nombre} (fila ${h.fila})${comite}: fila nueva — se llenan ${n} celdas + fórmulas</div>`;
+  }
   if (!h.diferencias.length) {
-    return `<div class="border border-emerald-200 bg-emerald-50 rounded-md p-3 text-xs font-semibold text-emerald-800">${nombre} (fila ${h.fila})${comite}: cuadra todo</div>`;
+    return `<div class="tarjeta-ok border border-emerald-200 bg-emerald-50 rounded-md p-3 text-xs font-semibold text-emerald-800">${nombre} (fila ${h.fila})${comite}: cuadra todo</div>`;
   }
   const filas = h.diferencias.map(d => `
-    <tr class="border-t border-slate-100">
+    <tr class="fila-dif border-t border-slate-100">
       <td class="py-1.5 px-2 font-mono">${esc(d.columna)}${h.fila}</td>
       <td class="py-1.5 px-2">${esc(d.concepto)}</td>
       <td class="py-1.5 px-2 text-right font-mono">${fmt(d.excel)}</td>
@@ -107,15 +135,22 @@ function tarjetaHoja(nombre, h) {
     </div>`;
 }
 
-function render(data) {
+function render(data, primera) {
   const dias = data.dias;
   TOKEN = data.token;
   const a = document.getElementById("descarga");
   a.href = data.descarga; a.classList.remove("hidden");
+  const ac = document.getElementById("descarga-contab");
+  ac.href = data.descarga_contabilidad; ac.classList.remove("hidden");
+  const celdas = (data.cambios || []).reduce((s, c) => s + c.celdas.length, 0);
+  const nuevas = (data.cambios || []).filter(c => c.nueva).length;
+  const cam = document.getElementById("cambios");
+  cam.textContent = celdas ? `Se escriben ${celdas} celdas${nuevas ? ` (${nuevas} fila(s) nueva(s))` : ""} en JP/RC` : "No hay nada que corregir";
+  cam.classList.remove("hidden");
   const hayPreguntas = dias.some(d => d.hojas.JP.pregunta_alquiler || d.hojas.RC.pregunta_alquiler);
   document.getElementById("aplicar").classList.toggle("hidden", !hayPreguntas);
   document.getElementById("resultados").innerHTML = dias.map(d => `
-    <div class="bg-white border border-slate-200 rounded-lg p-5 shadow-sm space-y-3">
+    <div class="dia-card bg-white border border-slate-200 rounded-lg p-5 shadow-sm space-y-3">
       <div class="flex justify-between items-baseline">
         <h2 class="text-sm font-bold text-slate-900">${esc(d.fecha)}</h2>
         <span class="text-[11px] text-slate-500">${d.registros} registros en OpenCorp</span>
@@ -126,6 +161,7 @@ function render(data) {
       </div>
       ${d.avisos.length ? `<ul class="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-md p-2 space-y-0.5">${d.avisos.map(a => `<li>⚠ ${esc(a)}</li>`).join("")}</ul>` : ""}
     </div>`).join("");
+  Animaciones.resultados(dias, primera);
 }
 
 document.getElementById("form").addEventListener("submit", async e => {
@@ -134,13 +170,20 @@ document.getElementById("form").addEventListener("submit", async e => {
   err.classList.add("hidden");
   document.getElementById("resultados").innerHTML = "";
   document.getElementById("descarga").classList.add("hidden");
+  document.getElementById("descarga-contab").classList.add("hidden");
+  document.getElementById("cambios").classList.add("hidden");
+  document.getElementById("aplicar").classList.add("hidden");
+  document.getElementById("resumen").classList.add("hidden");
   btn.disabled = true; btn.textContent = "Validando...";
+  Animaciones.progresoIniciar();
   try {
     const resp = await fetch("/api/validar", {method: "POST", body: new FormData(e.target)});
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || "Error inesperado");
-    render(data);
+    Animaciones.progresoTerminar(true);
+    render(data, true);
   } catch (ex) {
+    Animaciones.progresoTerminar(false);
     err.textContent = ex.message; err.classList.remove("hidden");
   } finally {
     btn.disabled = false; btn.textContent = "Validar";
@@ -160,7 +203,7 @@ document.getElementById("aplicar").addEventListener("click", async () => {
       method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({respuestas})});
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || "Error inesperado");
-    render(data);
+    render(data, false);
   } catch (ex) {
     err.textContent = ex.message; err.classList.remove("hidden");
   } finally {
